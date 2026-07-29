@@ -1,0 +1,16 @@
+# Runtime state (machine-specific, regenerated automatically)
+manager_config.json
+playtime.json
+history.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
