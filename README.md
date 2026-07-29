@@ -2,6 +2,8 @@
 
 A self-hosted web UI for managing an Enshrouded dedicated server on Windows. Runs on the server machine; no external services or accounts required.
 
+![Dashboard](screenshots/dashboard.png)
+
 ## Setup (on the server machine)
 
 1. Copy this folder to the machine that runs the Enshrouded server.
@@ -31,6 +33,8 @@ If the server isn't installed yet, clicking **Update / Install via SteamCMD** pe
 
 ## Server Settings
 
+![Server Settings](screenshots/settings.png)
+
 Edits `enshrouded_server.json` — every field of the current (0.9.0.0) format:
 
 - General: server name, bind IP, query port, player slots, save/log directories, voice chat (on/off, Proximity/Global), text chat, difficulty preset (Default / Relaxed / Hard / Survival / Custom).
@@ -45,6 +49,8 @@ Edits `enshrouded_server.json` — every field of the current (0.9.0.0) format:
 Add, edit, and delete user groups: name, join password, reserved slots, and all six permissions (kick/ban, access inventories, edit world, edit base, place/upgrade Flame Altars). Players join with a group's password and receive its permissions — the UI warns that a group with an empty password lets anyone join.
 
 ## Stats
+
+![Stats](screenshots/stats.png)
 
 Built from the manager's own tracking (the game exposes no combat stats): records cards (peak concurrent players with timestamp, known players, combined playtime, longest single session), a playtime leaderboard (total, sessions, average and longest session, last seen, online indicator), and two charts — peak players per day over the last 7 days, and busiest hours of the day over the last 30 days. Hourly concurrency history is stored in `history.json` (30-day retention); longest-session tracking starts from when this feature was installed.
 
