@@ -1,0 +1,4 @@
+fastapi>=0.110
+uvicorn>=0.29
+psutil>=5.9
+python-a2s>=1.3

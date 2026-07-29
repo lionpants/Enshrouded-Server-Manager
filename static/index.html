@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enshrouded Server Manager</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2312141a'/%3E%3Cpath d='M32 6 C32 16 44 20 44 34 C44 44 39 54 32 56 C25 54 20 44 20 34 C20 26 24 22 25 16 C28 21 30 22 30 18 C30 14 32 10 32 6 Z' fill='%23e8a33d'/%3E%3Cpath d='M32 24 C32 30 38 32 38 40 C38 47 35 52 32 53 C29 52 26 47 26 40 C26 34 30 31 32 24 Z' fill='%23f6e2b0'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #12141a; --panel: #1b1e28; --panel2: #232736; --border: #2e3345;
+  --text: #e2e5ee; --muted: #8b91a5; --accent: #e8a33d; --accent2: #c77f1a;
+  --green: #4caf7d; --red: #e05555; --blue: #4d8fd1;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font: 15px/1.5 "Segoe UI", system-ui, sans-serif; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
+header {
+  position: relative; display: flex; align-items: center; gap: 18px;
+  margin-bottom: 20px; padding: 26px 26px 24px;
+  border: 1px solid #3a3145; border-radius: 12px; overflow: hidden;
+  background: linear-gradient(160deg, #1a1626 0%, #12141a 55%, #1c1410 100%);
+}
+/* drifting shroud fog */
+header::before, header::after {
+  content: ""; position: absolute; inset: -60%; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(120,100,160,.16), transparent 70%);
+  filter: blur(18px); animation: fogdrift 26s ease-in-out infinite alternate;
+}
+header::after {
+  background: radial-gradient(closest-side, rgba(232,163,61,.10), transparent 65%);
+  animation: fogdrift 19s ease-in-out infinite alternate-reverse;
+}
+@keyframes fogdrift {
+  from { transform: translate(-8%, -4%) scale(1); }
+  to   { transform: translate(10%, 6%) scale(1.15); }
+}
+.flame { width: 44px; height: 56px; flex-shrink: 0; position: relative; z-index: 1; filter: drop-shadow(0 0 10px rgba(232,163,61,.55)); }
+.flame path { transform-origin: 50% 90%; }
+.flame .outer { animation: flick 2.6s ease-in-out infinite; }
+.flame .inner { animation: flick 1.9s ease-in-out infinite reverse; }
+@keyframes flick {
+  0%, 100% { transform: scaleY(1) scaleX(1); }
+  30% { transform: scaleY(1.06) scaleX(.96); }
+  60% { transform: scaleY(.95) scaleX(1.05); }
+  80% { transform: scaleY(1.03) scaleX(.98); }
+}
+.title-block { position: relative; z-index: 1; }
+header h1 {
+  font-family: "Cinzel", "Times New Roman", serif; font-size: 30px; font-weight: 700;
+  letter-spacing: 5px; line-height: 1.1;
+  background: linear-gradient(180deg, #f6e2b0 0%, #e8a33d 55%, #a3641a 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 0 22px rgba(232, 163, 61, .35);
+}
+header .subtitle {
+  font-family: "Cinzel", serif; font-size: 13px; letter-spacing: 6px;
+  color: var(--muted); text-transform: uppercase; margin-top: 4px;
+}
+#statusPill { position: relative; z-index: 1; margin-left: auto; }
+#statusPill { padding: 4px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--panel2); }
+#statusPill.running { background: #1d3a2c; color: var(--green); }
+#statusPill.stopped { background: #3a1d1d; color: var(--red); }
+#statusPill.updating { background: #3a2f1d; color: var(--accent); }
+
+nav { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; flex-wrap: wrap; }
+nav button { background: none; border: none; color: var(--muted); padding: 10px 16px; font-size: 15px; cursor: pointer; border-bottom: 2px solid transparent; }
+nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+nav button:hover { color: var(--text); }
+
+.tab { display: none; }
+.tab.active { display: block; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+.panel h2 { font-size: 16px; margin-bottom: 14px; color: var(--accent); font-weight: 600; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+
+.stat { background: var(--panel2); border-radius: 8px; padding: 14px; }
+.stat .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.stat .v { font-size: 20px; font-weight: 600; margin-top: 2px; }
+
+.btnrow { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+button.btn { border: none; border-radius: 8px; padding: 10px 22px; font-size: 15px; font-weight: 600; cursor: pointer; color: #fff; }
+.btn.start { background: var(--green); } .btn.stop { background: var(--red); }
+.btn.update { background: var(--blue); } .btn.save { background: var(--accent2); }
+.btn.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+.nightrow { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.btn.night {
+  background: linear-gradient(160deg, #241d3d 0%, #2c2547 100%);
+  color: #b9aee8; border: 1px solid #4a3f7a;
+  padding: 12px 26px; font-size: 15px; letter-spacing: .5px;
+}
+.btn.night:hover:not(:disabled) { border-color: #6d5fae; color: #d8d0f5; }
+.btn.night.on {
+  background: linear-gradient(160deg, #4a3f7a 0%, #5d4f99 100%);
+  color: #efe9ff; border-color: #8a7cc9;
+  box-shadow: 0 0 16px rgba(130, 110, 220, .55);
+}
+.check-wrap { position: relative; display: inline-flex; }
+.mainrow { margin-top: 48px; }
+.build-pill { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; padding: 5px 14px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--panel2); color: var(--muted); border: 1px solid var(--border); }
+.build-pill::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--border); }
+.build-pill.ok::after { border-top-color: #2c5a43; }
+.build-pill.warn::after { border-top-color: #5a4a1a; }
+.build-pill.ok { background: #1d3a2c; color: var(--green); border-color: #2c5a43; }
+.build-pill.warn { background: #3a2f1d; color: var(--accent); border-color: #5a4a1a; }
+.btn.pulse { animation: btnpulse 1.4s ease-in-out infinite; }
+@keyframes btnpulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 163, 61, .6); }
+  50% { box-shadow: 0 0 0 8px rgba(232, 163, 61, 0); }
+}
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.field { display: flex; flex-direction: column; gap: 4px; background: var(--panel2); border-radius: 8px; padding: 12px; }
+.field label { font-weight: 600; font-size: 14px; }
+.field .help { font-size: 12px; color: var(--muted); }
+.field input[type=text], .field input[type=number], .field input[type=password], .field select {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 14px; width: 100%;
+}
+.slider-row { display: flex; align-items: center; gap: 10px; }
+.slider-row input[type=range] { flex: 1; accent-color: var(--accent); }
+.slider-row input[type=number] { width: 80px; }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 4px; }
+.switch input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+.notice { background: #33290f; border: 1px solid #5a4a1a; color: #e8c987; border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; }
+.notice.info { background: #142636; border-color: #1f4260; color: #9cc4e8; }
+
+#log, #updateLog { background: #0c0e13; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font: 12px/1.5 Consolas, monospace; white-space: pre-wrap; max-height: 480px; overflow-y: auto; color: #b8bdcc; }
+
+.ug { border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 12px; background: var(--panel2); }
+.ug-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.ug-head input[type=text] { flex: 1; min-width: 140px; }
+.ug-perms { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; margin-top: 8px; }
+.ug .del { background: none; border: 1px solid var(--red); color: var(--red); border-radius: 6px; padding: 4px 12px; cursor: pointer; }
+
+.player-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel2); margin-bottom: 8px; cursor: pointer; }
+.player-row:hover { border-color: var(--accent2); }
+.player-row .pname { font-weight: 600; flex: 1; }
+.player-row .ptime { color: var(--muted); font-size: 13px; }
+.player-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); flex-shrink: 0; }
+.player-row.offline { opacity: .55; }
+.player-row.offline .player-dot { background: var(--muted); box-shadow: none; }
+.stats-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.stats-table th { text-align: left; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; padding: 6px 12px; border-bottom: 1px solid var(--border); }
+.stats-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+.stats-table tr:last-child td { border-bottom: none; }
+.stats-table .rank { color: var(--accent); font-weight: 700; }
+.barchart { display: flex; align-items: flex-end; gap: 4px; height: 140px; padding-top: 8px; }
+.barchart .bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+.barchart .fill { background: var(--accent2); border-radius: 3px 3px 0 0; min-height: 2px; }
+.barchart .bar:hover .fill { background: var(--accent); }
+.barchart .lbl { font-size: 10px; color: var(--muted); text-align: center; margin-top: 4px; white-space: nowrap; }
+.barchart .val { font-size: 11px; color: var(--text); text-align: center; margin-bottom: 2px; }
+.modal-back { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 20; align-items: center; justify-content: center; }
+.modal-back.open { display: flex; }
+.modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 22px; width: min(440px, 92vw); }
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; font-size: 18px; font-weight: 600; color: var(--accent); }
+.modal-head button { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; }
+.modal-head button:hover { color: var(--text); }
+#toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 22px; font-weight: 600; display: none; z-index: 10; max-width: 80vw; }
+#toast.err { border-color: var(--red); color: var(--red); }
+#toast.ok { border-color: var(--green); color: var(--green); }
+.savebar { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0; border-top: 1px solid var(--border); display: flex; gap: 10px; align-items: center; }
+.savebar .dirty { color: var(--accent); font-size: 13px; display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg class="flame" viewBox="0 0 44 56" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path class="outer" d="M22 2 C22 12 34 16 34 30 C34 40 29 50 22 52 C15 50 10 40 10 30 C10 22 14 18 15 12 C18 17 20 18 20 14 C20 10 22 6 22 2 Z" fill="#e8a33d" opacity="0.9"/>
+      <path class="inner" d="M22 20 C22 26 28 28 28 36 C28 43 25 48 22 49 C19 48 16 43 16 36 C16 30 20 27 22 20 Z" fill="#f6e2b0"/>
+      <ellipse cx="22" cy="51" rx="9" ry="3" fill="#a3641a" opacity="0.5"/>
+    </svg>
+    <div class="title-block">
+      <h1>ENSHROUDED</h1>
+      <div class="subtitle">Server Manager</div>
+    </div>
+    <div id="statusPill">loading…</div>
+  </header>
+
+  <div id="updateBanner" class="notice" style="display:none"></div>
+
+  <nav>
+    <button data-tab="dashboard" class="active">Dashboard</button>
+    <button data-tab="settings">Server Settings</button>
+    <button data-tab="groups">User Groups</button>
+    <button data-tab="stats">Stats</button>
+    <button data-tab="backups">Backups</button>
+    <button data-tab="logs">Logs</button>
+    <button data-tab="manager">Manager Settings</button>
+  </nav>
+
+  <!-- DASHBOARD -->
+  <div class="tab active" id="tab-dashboard">
+    <div class="panel">
+      <h2>Server Status</h2>
+      <div class="grid" id="statGrid"></div>
+      <div class="btnrow mainrow">
+        <button class="btn start" id="btnStart">Start Server</button>
+        <button class="btn stop" id="btnStop">Stop Server</button>
+        <button class="btn save" id="btnRestart">Restart Server</button>
+        <button class="btn update" id="btnUpdate">Update / Install via SteamCMD</button>
+        <div class="check-wrap">
+          <span class="build-pill" id="buildPill">checking build…</span>
+          <button class="btn ghost" id="btnCheckUpdate">Check for Updates</button>
+        </div>
+      </div>
+      <div class="nightrow">
+        <button class="btn night" id="btnNight">Eternal Night: …</button>
+        <span class="help" style="font-size:12px;color:var(--muted)">Sets day to 2 min and night to 60 min, then restarts. Toggling off restores your previous settings.</span>
+      </div>
+    </div>
+    <div class="panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <h2 style="margin-bottom:0">Players <span id="playerCount" style="color:var(--muted);font-weight:400;font-size:13px"></span></h2>
+        <label class="switch" style="font-size:13px;color:var(--muted)"><input type="checkbox" id="showOffline"><span>Show offline players</span></label>
+      </div>
+      <div id="playerList" style="margin-top:14px"><p style="color:var(--muted)">Loading…</p></div>
+    </div>
+    <div class="panel" id="updatePanel" style="display:none">
+      <h2>SteamCMD Output</h2>
+      <div id="updateLog"></div>
+    </div>
+  </div>
+
+  <!-- SERVER SETTINGS -->
+  <div class="tab" id="tab-settings">
+    <div class="notice" id="presetNotice" style="display:none">
+      Custom gameplay values below are <b>ignored</b> unless the difficulty preset is set to <b>Custom</b>.
+    </div>
+    <div class="panel">
+      <h2>General</h2>
+      <div class="grid" id="generalFields"></div>
+    </div>
+    <div id="gameplayGroups"></div>
+    <div class="savebar">
+      <button class="btn save" id="btnSaveConfig">Save Configuration</button>
+      <button class="btn stop" id="btnSaveRestart">Save &amp; Restart Server</button>
+      <button class="btn ghost" id="btnReload">Discard Changes</button>
+      <span class="dirty" id="dirtyFlag">● unsaved changes</span>
+    </div>
+  </div>
+
+  <!-- USER GROUPS -->
+  <div class="tab" id="tab-groups">
+    <div class="notice info">Players join with a group's password and receive its permissions. Set a password on every group — a group with an empty password lets anyone join with those permissions.</div>
+    <div class="panel">
+      <h2>User Groups</h2>
+      <div id="ugList"></div>
+      <button class="btn ghost" id="btnAddGroup">+ Add Group</button>
+    </div>
+    <div class="savebar">
+      <button class="btn save" id="btnSaveConfig2">Save Configuration</button>
+      <button class="btn stop" id="btnSaveRestart2">Save &amp; Restart Server</button>
+      <span class="dirty" id="dirtyFlag2">● unsaved changes</span>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="tab" id="tab-stats">
+    <div class="panel">
+      <h2>Records</h2>
+      <div class="grid" id="statsRecords"></div>
+    </div>
+    <div class="panel">
+      <h2>Playtime Leaderboard</h2>
+      <div style="overflow-x:auto">
+      <table class="stats-table" id="leaderboard">
+        <thead><tr><th>#</th><th>Player</th><th>Total</th><th>Sessions</th><th>Avg session</th><th>Longest</th><th>Last seen</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Peak Players — Last 7 Days</h2>
+      <div class="barchart" id="chartDaily"></div>
+    </div>
+    <div class="panel">
+      <h2>Busiest Hours <span style="color:var(--muted);font-weight:400;font-size:13px">(max concurrent, last 30 days)</span></h2>
+      <div class="barchart" id="chartHours"></div>
+    </div>
+  </div>
+
+  <!-- BACKUPS -->
+  <div class="tab" id="tab-backups">
+    <div class="notice info">The game server does not back up world saves on its own — only these backups protect your world. Backups zip the savegame folder; restoring requires the server to be stopped (a safety copy of the current world is made first).</div>
+    <div class="panel">
+      <h2>Automatic Backups</h2>
+      <div class="grid">
+        <div class="field"><label>Auto-backup</label>
+          <label class="switch"><input type="checkbox" id="abEnabled"><span>Enabled</span></label>
+          <div class="help">Runs in the background while the manager is open</div></div>
+        <div class="field"><label>Interval (hours)</label><input type="number" id="abInterval" min="1" step="1"></div>
+        <div class="field"><label>Backups to keep</label><input type="number" id="abKeep" min="1" step="1"><div class="help">Oldest are deleted beyond this count</div></div>
+      </div>
+      <div class="btnrow"><button class="btn save" id="btnSaveBackupCfg">Save Backup Settings</button></div>
+    </div>
+    <div class="panel">
+      <h2>Backups <span id="bkSaveDir" style="color:var(--muted);font-weight:400;font-size:13px"></span></h2>
+      <div class="btnrow" style="margin:0 0 14px">
+        <button class="btn update" id="btnBackupNow">Create Backup Now</button>
+        <button class="btn ghost" id="btnRefreshBackups">Refresh</button>
+      </div>
+      <div id="bkList"></div>
+    </div>
+  </div>
+
+  <!-- LOGS -->
+  <div class="tab" id="tab-logs">
+    <div class="panel">
+      <h2>Server Log <span id="logFile" style="color:var(--muted);font-weight:400;font-size:13px"></span></h2>
+      <div id="log"></div>
+      <div class="btnrow"><button class="btn ghost" id="btnRefreshLog">Refresh</button></div>
+    </div>
+  </div>
+
+  <!-- MANAGER SETTINGS -->
+  <div class="tab" id="tab-manager">
+    <div class="panel">
+      <h2>Paths &amp; Binding</h2>
+      <div class="grid">
+        <div class="field"><label>Server install directory</label><input type="text" id="mServerDir"><div class="help">Folder containing enshrouded_server.exe (SteamCMD installs here too)</div></div>
+        <div class="field"><label>Server executable name</label><input type="text" id="mServerExe"></div>
+        <div class="field"><label>SteamCMD executable</label><input type="text" id="mSteamcmd"><div class="help">Full path to steamcmd.exe</div></div>
+        <div class="field"><label>Manager bind host</label><input type="text" id="mHost"><div class="help">127.0.0.1 = this machine only. Requires manager restart.</div></div>
+        <div class="field"><label>Manager port</label><input type="number" id="mPort"></div>
+        <div class="field"><label>Daily auto-restart</label>
+          <div style="display:flex;align-items:center;gap:16px">
+            <label class="switch"><input type="checkbox" id="mAutoRestart"><span>Enabled</span></label>
+            <input type="time" id="mAutoRestartTime" style="width:auto">
+          </div>
+          <div class="help">Restarts the server once a day at this time (server machine's local time, only if it's running) — also forces a full resource respawn. Players are disconnected without warning; pick a quiet hour.</div></div>
+        <div class="field"><label>Auto-update</label>
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <label class="switch"><input type="checkbox" id="mAutoUpdate"><span>Enabled</span></label>
+            <label class="switch"><input type="checkbox" id="mAutoUpdateEmpty"><span>Only when empty</span></label>
+          </div>
+          <div class="help">When a new build is found (checked every 10 min): back up the world, stop the server, update via SteamCMD, and start it again. "Only when empty" waits until no players are online.</div></div>
+      </div>
+      <div class="btnrow"><button class="btn save" id="btnSaveManager">Save Manager Settings</button></div>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+<div id="modalBack" class="modal-back">
+  <div class="modal">
+    <div class="modal-head"><span id="modalName"></span><button id="modalClose" aria-label="Close">✕</button></div>
+    <div class="grid" id="modalStats" style="grid-template-columns:1fr 1fr"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const api = async (path, opts = {}) => {
+  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || r.statusText);
+  return data;
+};
+const NS_PER_MIN = 60000000000;
+let schema = null, config = null, dirty = false;
+
+function toast(msg, cls) {
+  const t = $("toast");
+  t.textContent = msg; t.className = cls; t.style.display = "block";
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 5000);
+}
+function setDirty(v) {
+  dirty = v;
+  $("dirtyFlag").style.display = $("dirtyFlag2").style.display = v ? "inline" : "none";
+}
+
+// ---------- tabs
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x => x.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+  b.classList.add("active");
+  $("tab-" + b.dataset.tab).classList.add("active");
+  if (b.dataset.tab === "logs") refreshLog();
+  if (b.dataset.tab === "backups") refreshBackups();
+  if (b.dataset.tab === "stats") refreshStats();
+});
+
+// ---------- status
+async function refreshStatus() {
+  try {
+    const s = await api("/api/status");
+    const pill = $("statusPill");
+    if (s.updating) { pill.textContent = "UPDATING"; pill.className = "updating"; }
+    else if (s.running) { pill.textContent = "RUNNING"; pill.className = "running"; }
+    else { pill.textContent = "STOPPED"; pill.className = "stopped"; }
+    const stats = [
+      ["State", s.updating ? "Updating" : s.running ? "Running" : "Stopped"],
+      ["Installed", s.installed ? "Yes" : "No — run update to install"],
+      ["Build", s.installedBuild ?? "—"],
+      ["PID", s.pid ?? "—"],
+      ["Uptime", s.uptimeSeconds != null ? fmtUptime(s.uptimeSeconds) : "—"],
+      ["CPU", s.cpuPercent != null ? s.cpuPercent.toFixed(1) + " %" : "—"],
+      ["Memory", s.memoryMB != null ? s.memoryMB + " MB" : "—"],
+      ["Auto-Restart", s.autoRestart && s.autoRestart.enabled
+        ? `Daily at ${s.autoRestart.time}` + (s.autoRestart.next ? ` (next: ${new Date(s.autoRestart.next).toLocaleString([], {weekday:"short", hour:"2-digit", minute:"2-digit"})})` : "")
+        : "Off"],
+      ["Auto-Update", !s.autoUpdate || !s.autoUpdate.enabled ? "Off"
+        : s.autoUpdate.waiting ? "Update pending — waiting for empty server"
+        : s.autoUpdate.last ? `On — last: ${new Date(s.autoUpdate.last).toLocaleString()} (${s.autoUpdate.lastResult})`
+        : `On${s.autoUpdate.whenEmpty ? " (when empty)" : ""}`],
+    ];
+    $("statGrid").innerHTML = stats.map(([k, v]) =>
+      `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+    $("btnStart").disabled = s.running || s.updating || !s.installed;
+    $("btnStop").disabled = !s.running;
+    $("btnRestart").disabled = !s.running || s.updating;
+    const nb = $("btnNight");
+    nb.disabled = s.updating || !s.configExists;
+    nb.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px;margin-right:7px"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>Eternal Night: ${s.eternalNight ? "ON" : "OFF"}`;
+    nb.classList.toggle("on", !!s.eternalNight);
+    $("btnUpdate").disabled = s.running || s.updating;
+  } catch (e) { $("statusPill").textContent = "manager offline"; $("statusPill").className = ""; }
+}
+const fmtUptime = s => {
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  return h ? `${h}h ${m}m` : `${m}m ${s % 60}s`;
+};
+
+$("btnStart").onclick = () => act("/api/server/start", "Server starting…");
+$("btnStop").onclick = () => { if (confirm("Stop the server? Players will be disconnected.")) act("/api/server/stop", "Server stopped"); };
+$("btnRestart").onclick = () => { if (confirm("Restart the server? Players will be disconnected. This also forces a full resource/terrain respawn outside Flame Altar zones.")) act("/api/server/restart", "Server restarting…"); };
+$("btnNight").onclick = async () => {
+  const on = $("btnNight").textContent.includes("OFF");
+  const msg = on
+    ? "Enable Eternal Night?\n\nDaytime → 2 min (minimum), nighttime → 60 min (maximum), preset → Custom. Your current values are stashed. The server will restart if running."
+    : "Disable Eternal Night?\n\nYour previous day/night lengths and preset will be restored. The server will restart if running.";
+  if (!confirm(msg)) return;
+  try {
+    const d = await api("/api/eternal-night/toggle", { method: "POST" });
+    toast(`Eternal Night ${d.active ? "enabled" : "disabled"}${d.restarted ? " — server restarting" : " — applies on next start"}`, "ok");
+    loadConfig();
+  } catch (e) { toast(e.message, "err"); }
+  refreshStatus();
+};
+async function act(path, okMsg) {
+  try { await api(path, { method: "POST" }); toast(okMsg, "ok"); }
+  catch (e) { toast(e.message, "err"); }
+  refreshStatus();
+}
+
+// ---------- update check
+function showCheckResult(d) {
+  const pill = $("buildPill"), banner = $("updateBanner");
+  if (d.error) {
+    pill.className = "build-pill";
+    pill.textContent = `${d.installedBuild ? "build " + d.installedBuild + " — " : ""}check failed`;
+    pill.title = d.error;
+  } else if (!d.installedBuild) {
+    pill.className = "build-pill warn";
+    pill.textContent = `⚠ not installed — latest build ${d.latestBuild}`;
+  } else if (d.updateAvailable) {
+    pill.className = "build-pill warn";
+    pill.textContent = `⚠ build ${d.installedBuild} → ${d.latestBuild} available`;
+    pill.title = `Checked via ${d.source}`;
+  } else {
+    pill.className = "build-pill ok";
+    pill.textContent = `✓ build ${d.installedBuild} — up to date`;
+    pill.title = `Checked via ${d.source}`;
+  }
+  $("btnUpdate").classList.toggle("pulse", !!d.updateAvailable);
+  if (d.updateAvailable) {
+    banner.style.display = "block";
+    banner.innerHTML = `⚠ <b>Server update available:</b> build ${d.installedBuild} → ${d.latestBuild}. Stop the server and run the updater from the Dashboard.`;
+  } else banner.style.display = "none";
+}
+async function autoCheckUpdate() {
+  try { showCheckResult(await api("/api/update/check")); } catch (e) { /* silent for auto checks */ }
+}
+$("btnCheckUpdate").onclick = async () => {
+  const btn = $("btnCheckUpdate"), pill = $("buildPill");
+  btn.disabled = true; btn.textContent = "Checking…";
+  pill.className = "build-pill"; pill.textContent = "checking build…";
+  try { showCheckResult(await api("/api/update/check?force=true")); }
+  catch (e) { pill.textContent = "check failed"; pill.title = e.message; toast(e.message, "err"); }
+  btn.disabled = false; btn.textContent = "Check for Updates";
+};
+
+// ---------- update
+let updOffset = 0, updTimer = null;
+$("btnUpdate").onclick = async () => {
+  if (!confirm("Run SteamCMD update/install? The game server must be stopped.")) return;
+  try {
+    await api("/api/server/update", { method: "POST" });
+    $("updatePanel").style.display = "block";
+    $("updateLog").textContent = ""; updOffset = 0;
+    pollUpdate();
+  } catch (e) { toast(e.message, "err"); }
+};
+async function pollUpdate() {
+  clearTimeout(updTimer);
+  try {
+    const d = await api(`/api/update/log?offset=${updOffset}`);
+    if (d.lines.length) {
+      $("updateLog").textContent += d.lines.join("\n") + "\n";
+      $("updateLog").scrollTop = $("updateLog").scrollHeight;
+      updOffset = d.offset;
+    }
+    if (d.running) updTimer = setTimeout(pollUpdate, 1500);
+    else {
+      toast(d.exitCode === 0 ? "Update finished successfully" : "Update finished with errors — check output", d.exitCode === 0 ? "ok" : "err");
+      refreshStatus(); autoCheckUpdate();
+    }
+  } catch (e) { updTimer = setTimeout(pollUpdate, 3000); }
+}
+
+// ---------- config UI
+const GENERAL_FIELDS = [
+  { key: "name", label: "Server Name", type: "text", help: "Shown in the in-game server list" },
+  { key: "gameSettingsPreset", label: "Difficulty Preset", type: "enum", options: ["Default", "Relaxed", "Hard", "Survival", "Custom"], help: "Gameplay settings below only apply with 'Custom'" },
+  { key: "ip", label: "Bind IP", type: "text", help: "Usually 0.0.0.0" },
+  { key: "queryPort", label: "Query Port", type: "int", min: 1, max: 65535, help: "Default 15637; open it in your firewall" },
+  { key: "slotCount", label: "Player Slots", type: "int", min: 1, max: 16 },
+  { key: "saveDirectory", label: "Save Directory", type: "text" },
+  { key: "logDirectory", label: "Log Directory", type: "text" },
+  { key: "enableVoiceChat", label: "Voice Chat", type: "bool" },
+  { key: "voiceChatMode", label: "Voice Chat Mode", type: "enum", options: ["Proximity", "Global"] },
+  { key: "enableTextChat", label: "Text Chat", type: "bool" },
+];
+
+function fieldHTML(f, scope) {
+  const id = `f_${scope}_${f.key}`;
+  let ctl = "";
+  if (f.type === "text") ctl = `<input type="text" id="${id}" data-scope="${scope}" data-key="${f.key}">`;
+  else if (f.type === "int") ctl = `<input type="number" id="${id}" data-scope="${scope}" data-key="${f.key}" min="${f.min ?? ""}" max="${f.max ?? ""}" step="1">`;
+  else if (f.type === "bool") ctl = `<label class="switch"><input type="checkbox" id="${id}" data-scope="${scope}" data-key="${f.key}"><span>Enabled</span></label>`;
+  else if (f.type === "enum" || f.type === "enum-num") {
+    const labels = f.optionLabels || f.options;
+    ctl = `<select id="${id}" data-scope="${scope}" data-key="${f.key}">` +
+      f.options.map((o, i) => `<option value="${o}">${labels[i]}</option>`).join("") + `</select>`;
+  } else if (f.type === "factor") {
+    ctl = `<div class="slider-row">
+      <input type="range" id="${id}_r" min="${f.min}" max="${f.max}" step="${f.step}">
+      <input type="number" id="${id}" data-scope="${scope}" data-key="${f.key}" min="${f.min}" max="${f.max}" step="${f.step}">
+    </div>`;
+  } else if (f.type === "minutes") {
+    ctl = `<div class="slider-row">
+      <input type="range" id="${id}_r" min="${f.min}" max="${f.max}" step="1">
+      <input type="number" id="${id}" data-scope="${scope}" data-key="${f.key}" min="${f.min}" max="${f.max}" step="1"><span style="color:var(--muted);font-size:13px">min</span>
+    </div>`;
+  }
+  return `<div class="field"><label>${f.label}</label>${ctl}${f.help ? `<div class="help">${f.help}</div>` : ""}</div>`;
+}
+
+function buildSettingsUI() {
+  $("generalFields").innerHTML = GENERAL_FIELDS.map(f => fieldHTML(f, "general")).join("");
+  $("gameplayGroups").innerHTML = schema.groups.map(g =>
+    `<div class="panel"><h2>${g.name}</h2><div class="grid">${g.fields.map(f => fieldHTML(f, "gs")).join("")}</div></div>`).join("");
+  document.querySelectorAll("[data-scope]").forEach(el => {
+    el.addEventListener("input", () => { readField(el); setDirty(true); updatePresetNotice(); });
+    const r = $(el.id + "_r");
+    if (r) {
+      r.addEventListener("input", () => { el.value = r.value; readField(el); setDirty(true); });
+      el.addEventListener("input", () => { r.value = el.value; });
+    }
+  });
+}
+
+let _fieldMap = null;
+function allFields() {
+  if (_fieldMap) return _fieldMap;
+  _fieldMap = {};
+  GENERAL_FIELDS.forEach(f => _fieldMap["general:" + f.key] = f);
+  schema.groups.forEach(g => g.fields.forEach(f => _fieldMap["gs:" + f.key] = f));
+  return _fieldMap;
+}
+
+function readField(el) {
+  const f = allFields()[el.dataset.scope + ":" + el.dataset.key];
+  const tgt = el.dataset.scope === "gs" ? config.gameSettings : config;
+  let v;
+  if (f.type === "bool") v = el.checked;
+  else if (f.type === "int") v = parseInt(el.value, 10);
+  else if (f.type === "factor") v = parseFloat(el.value);
+  else if (f.type === "minutes") v = Math.round(parseFloat(el.value)) * NS_PER_MIN;
+  else if (f.type === "enum-num") v = parseFloat(el.value);
+  else v = el.value;
+  if (v !== undefined && !(typeof v === "number" && isNaN(v))) tgt[el.dataset.key] = v;
+}
+
+function fillSettingsUI() {
+  document.querySelectorAll("[data-scope]").forEach(el => {
+    const f = allFields()[el.dataset.scope + ":" + el.dataset.key];
+    const src = el.dataset.scope === "gs" ? config.gameSettings : config;
+    let v = src[el.dataset.key];
+    if (v === undefined) v = f.default;
+    if (f.type === "bool") el.checked = !!v;
+    else if (f.type === "minutes") el.value = Math.round(v / NS_PER_MIN);
+    else el.value = v;
+    const r = $(el.id + "_r");
+    if (r) r.value = el.value;
+  });
+  updatePresetNotice();
+}
+function updatePresetNotice() {
+  $("presetNotice").style.display = config.gameSettingsPreset === "Custom" ? "none" : "block";
+}
+
+// ---------- user groups
+const PERMS = [
+  ["canKickBan", "Kick / ban players"],
+  ["canAccessInventories", "Access chests & inventories"],
+  ["canEditWorld", "Edit world (outside bases)"],
+  ["canEditBase", "Edit bases (build/remove)"],
+  ["canExtendBase", "Place / upgrade Flame Altars"],
+];
+function renderGroups() {
+  $("ugList").innerHTML = (config.userGroups || []).map((g, i) => `
+    <div class="ug">
+      <div class="ug-head">
+        <input type="text" value="${escapeAttr(g.name || "")}" data-ug="${i}" data-f="name" placeholder="Group name">
+        <input type="text" value="${escapeAttr(g.password || "")}" data-ug="${i}" data-f="password" placeholder="Password">
+        <label style="font-size:13px;color:var(--muted)">Reserved slots
+          <input type="number" min="0" max="16" style="width:60px" value="${g.reservedSlots ?? 0}" data-ug="${i}" data-f="reservedSlots"></label>
+        <button class="del" data-del="${i}">Delete</button>
+      </div>
+      <div class="ug-perms">${PERMS.map(([k, lbl]) =>
+        `<label class="switch"><input type="checkbox" ${g[k] ? "checked" : ""} data-ug="${i}" data-f="${k}"><span>${lbl}</span></label>`).join("")}
+      </div>
+    </div>`).join("") || `<p style="color:var(--muted);margin-bottom:12px">No user groups defined. Without groups (and passwords) anyone can join.</p>`;
+  document.querySelectorAll("[data-ug]").forEach(el => el.addEventListener("input", () => {
+    const g = config.userGroups[+el.dataset.ug], f = el.dataset.f;
+    if (el.type === "checkbox") g[f] = el.checked;
+    else if (f === "reservedSlots") g[f] = parseInt(el.value, 10) || 0;
+    else g[f] = el.value;
+    setDirty(true);
+  }));
+  document.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
+    config.userGroups.splice(+b.dataset.del, 1); setDirty(true); renderGroups();
+  });
+}
+const escapeAttr = s => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+$("btnAddGroup").onclick = () => {
+  config.userGroups = config.userGroups || [];
+  config.userGroups.push({ name: "NewGroup", password: "", canKickBan: false, canAccessInventories: false, canEditWorld: true, canEditBase: false, canExtendBase: false, reservedSlots: 0 });
+  setDirty(true); renderGroups();
+};
+
+// ---------- load / save config
+async function loadConfig() {
+  const d = await api("/api/config");
+  config = d.config;
+  if (!d.exists) toast("No enshrouded_server.json found — showing defaults. Saving will create it.", "err");
+  fillSettingsUI(); renderGroups(); setDirty(false);
+}
+async function saveConfig() {
+  try {
+    const d = await api("/api/config", { method: "PUT", body: JSON.stringify(config) });
+    setDirty(false);
+    toast(d.restartNeeded ? "Saved. Restart the server to apply changes." : "Configuration saved", "ok");
+  } catch (e) { toast(e.message, "err"); }
+}
+$("btnSaveConfig").onclick = saveConfig;
+$("btnSaveConfig2").onclick = saveConfig;
+$("btnReload").onclick = () => loadConfig();
+
+async function saveAndRestart() {
+  if (!confirm("Save and restart the server? Connected players will be disconnected.")) return;
+  try {
+    await api("/api/config", { method: "PUT", body: JSON.stringify(config) });
+    setDirty(false);
+    toast("Saved — restarting server…", "ok");
+    await api("/api/server/restart", { method: "POST" });
+    toast("Configuration saved and server restarted", "ok");
+  } catch (e) { toast(e.message, "err"); }
+  refreshStatus();
+}
+$("btnSaveRestart").onclick = saveAndRestart;
+$("btnSaveRestart2").onclick = saveAndRestart;
+
+// ---------- players
+const fmtDur = s => {
+  s = Math.max(0, Math.floor(s));
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  if (d) return `${d}d ${h}h ${m}m`;
+  if (h) return `${h}h ${m}m`;
+  return `${m}m`;
+};
+let playersCache = [];
+const playerRow = (p, i) => `
+  <div class="player-row ${p.online ? "" : "offline"}" data-player="${i}">
+    <span class="player-dot"></span>
+    <span class="pname">${escapeAttr(p.name)}</span>
+    <span class="ptime">${p.online
+      ? `session ${fmtDur(p.sessionSeconds)} · lifetime ${fmtDur(p.lifetimeSeconds)}`
+      : `last seen ${p.lastSeen ? new Date(p.lastSeen).toLocaleDateString() : "—"} · lifetime ${fmtDur(p.lifetimeSeconds)}`}</span>
+  </div>`;
+async function refreshPlayers() {
+  try {
+    const d = await api("/api/players");
+    const showOff = $("showOffline").checked;
+    // entries in d.players are online by definition; older backends omit the flag
+    playersCache = d.players.map(p => ({ ...p, online: true }))
+      .concat(showOff ? (d.offline || []).map(p => ({ ...p, online: false })) : []);
+    $("playerCount").textContent = d.error ? "(query failed)" : `(${d.players.length} online)`;
+    if (d.error && !showOff) { $("playerList").innerHTML = `<p style="color:var(--muted)">Player query unavailable — server offline or still starting.</p>`; return; }
+    $("playerList").innerHTML = playersCache.length
+      ? playersCache.map(playerRow).join("")
+      : `<p style="color:var(--muted)">No players ${showOff ? "known yet" : "online"}.</p>`;
+    document.querySelectorAll("[data-player]").forEach(r => r.onclick = () => showPlayerModal(playersCache[+r.dataset.player]));
+  } catch (e) { $("playerCount").textContent = ""; }
+}
+$("showOffline").checked = localStorage.getItem("esmShowOffline") === "1";
+$("showOffline").onchange = () => { localStorage.setItem("esmShowOffline", $("showOffline").checked ? "1" : "0"); refreshPlayers(); };
+function showPlayerModal(p) {
+  if (!p) return;
+  $("modalName").textContent = p.name + (p.online ? "" : " (offline)");
+  const stats = [
+    ["Current session", p.online ? fmtDur(p.sessionSeconds) : "—"],
+    ["Lifetime playtime", fmtDur(p.lifetimeSeconds)],
+    ["Completed sessions", p.pastSessions],
+    ["First seen", p.firstSeen ? new Date(p.firstSeen).toLocaleString() : "—"],
+    ["Last seen", p.online ? "now" : (p.lastSeen ? new Date(p.lastSeen).toLocaleString() : "—")],
+  ];
+  $("modalStats").innerHTML = stats.map(([k, v]) =>
+    `<div class="stat"><div class="k">${k}</div><div class="v" style="font-size:17px">${v}</div></div>`).join("");
+  $("modalBack").classList.add("open");
+}
+$("modalClose").onclick = () => $("modalBack").classList.remove("open");
+$("modalBack").onclick = e => { if (e.target === $("modalBack")) $("modalBack").classList.remove("open"); };
+
+// ---------- stats
+function barChart(el, items, labelEvery = 1) {
+  const max = Math.max(1, ...items.map(i => i.v));
+  el.innerHTML = items.map((i, idx) => `
+    <div class="bar" title="${i.label}: ${i.v}">
+      <div class="val">${i.v || ""}</div>
+      <div class="fill" style="height:${Math.round(i.v / max * 100)}%"></div>
+      <div class="lbl">${idx % labelEvery === 0 ? i.label : ""}</div>
+    </div>`).join("");
+}
+async function refreshStats() {
+  try {
+    const d = await api("/api/stats");
+    const peak = d.peak && d.peak.count ? `${d.peak.count} players` : "—";
+    const peakAt = d.peak && d.peak.at ? new Date(d.peak.at).toLocaleString() : "";
+    const totalAll = d.leaderboard.reduce((a, b) => a + b.totalSeconds, 0);
+    const records = [
+      ["Peak concurrent players", peak + (peakAt ? ` <span style="font-size:12px;color:var(--muted)">${peakAt}</span>` : "")],
+      ["Known players", d.leaderboard.length],
+      ["Combined playtime", fmtDur(totalAll)],
+      ["Longest single session", d.leaderboard.length ? fmtDur(Math.max(...d.leaderboard.map(b => b.longestSession))) : "—"],
+    ];
+    $("statsRecords").innerHTML = records.map(([k, v]) =>
+      `<div class="stat"><div class="k">${k}</div><div class="v" style="font-size:18px">${v}</div></div>`).join("");
+    $("leaderboard").querySelector("tbody").innerHTML = d.leaderboard.map((b, i) => `
+      <tr>
+        <td class="rank">${i + 1}</td>
+        <td>${b.online ? '<span class="player-dot" style="display:inline-block;margin-right:7px"></span>' : ""}${escapeAttr(b.name)}</td>
+        <td>${fmtDur(b.totalSeconds)}</td>
+        <td>${b.sessions}</td>
+        <td>${fmtDur(b.avgSession)}</td>
+        <td>${fmtDur(b.longestSession)}</td>
+        <td style="color:var(--muted)">${b.lastSeen === "now" ? "online now" : b.lastSeen ? new Date(b.lastSeen).toLocaleDateString() : "—"}</td>
+      </tr>`).join("") || `<tr><td colspan="7" style="color:var(--muted)">No playtime recorded yet.</td></tr>`;
+    barChart($("chartDaily"), d.daily.map(x => ({ label: x.day.slice(5), v: x.max })));
+    barChart($("chartHours"), d.byHour.map((v, h) => ({ label: `${h}h`, v })), 3);
+  } catch (e) { $("statsRecords").innerHTML = `<p style="color:var(--red)">${e.message}</p>`; }
+}
+
+// ---------- backups
+async function refreshBackups() {
+  try {
+    const d = await api("/api/backups");
+    $("abEnabled").checked = d.autoBackup;
+    $("abInterval").value = d.autoBackupIntervalHours;
+    $("abKeep").value = d.backupKeepCount;
+    $("bkSaveDir").textContent = `(${d.saveDir})`;
+    $("bkList").innerHTML = d.backups.length ? d.backups.map(b => `
+      <div class="ug" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px"><b>${b.name}</b><div class="help" style="font-size:12px;color:var(--muted)">${b.created} · ${b.sizeMB} MB</div></div>
+        <a class="btn ghost" style="text-decoration:none;padding:6px 14px" href="/api/backups/${b.name}/download">Download</a>
+        <button class="btn ghost" style="padding:6px 14px" data-restore="${b.name}">Restore</button>
+        <button class="del" data-bkdel="${b.name}">Delete</button>
+      </div>`).join("") : `<p style="color:var(--muted)">No backups yet.</p>`;
+    document.querySelectorAll("[data-restore]").forEach(x => x.onclick = async () => {
+      if (!confirm(`Restore "${x.dataset.restore}"?\n\nThis replaces the current world (a safety copy is made first). The server must be stopped.`)) return;
+      try { await api(`/api/backups/${x.dataset.restore}/restore`, { method: "POST" }); toast("Backup restored", "ok"); refreshBackups(); }
+      catch (e) { toast(e.message, "err"); }
+    });
+    document.querySelectorAll("[data-bkdel]").forEach(x => x.onclick = async () => {
+      if (!confirm(`Delete backup "${x.dataset.bkdel}"?`)) return;
+      try { await api(`/api/backups/${x.dataset.bkdel}`, { method: "DELETE" }); refreshBackups(); }
+      catch (e) { toast(e.message, "err"); }
+    });
+  } catch (e) { $("bkList").innerHTML = `<p style="color:var(--red)">${e.message}</p>`; }
+}
+$("btnRefreshBackups").onclick = refreshBackups;
+$("btnBackupNow").onclick = async () => {
+  const btn = $("btnBackupNow"); btn.disabled = true; btn.textContent = "Backing up…";
+  try {
+    const d = await api("/api/backups", { method: "POST" });
+    toast(d.warning || `Backup created: ${d.name}`, d.warning ? "err" : "ok");
+    refreshBackups();
+  } catch (e) { toast(e.message, "err"); }
+  btn.disabled = false; btn.textContent = "Create Backup Now";
+};
+$("btnSaveBackupCfg").onclick = async () => {
+  try {
+    await api("/api/manager-config", { method: "PUT", body: JSON.stringify({
+      autoBackup: $("abEnabled").checked,
+      autoBackupIntervalHours: parseInt($("abInterval").value, 10),
+      backupKeepCount: parseInt($("abKeep").value, 10),
+    })});
+    toast("Backup settings saved", "ok");
+  } catch (e) { toast(e.message, "err"); }
+};
+
+// ---------- logs
+async function refreshLog() {
+  try {
+    const d = await api("/api/logs?lines=300");
+    $("logFile").textContent = d.file ? `(${d.file})` : "";
+    $("log").textContent = d.lines.join("\n");
+    $("log").scrollTop = $("log").scrollHeight;
+  } catch (e) { $("log").textContent = e.message; }
+}
+$("btnRefreshLog").onclick = refreshLog;
+
+// ---------- manager settings
+async function loadManager() {
+  const m = await api("/api/manager-config");
+  $("mServerDir").value = m.serverDir; $("mServerExe").value = m.serverExe;
+  $("mSteamcmd").value = m.steamcmdExe; $("mHost").value = m.host; $("mPort").value = m.port;
+  $("mAutoRestart").checked = !!m.autoRestart; $("mAutoRestartTime").value = m.autoRestartTime || "05:00";
+  $("mAutoUpdate").checked = !!m.autoUpdate; $("mAutoUpdateEmpty").checked = m.autoUpdateWhenEmpty !== false;
+}
+$("btnSaveManager").onclick = async () => {
+  try {
+    await api("/api/manager-config", { method: "PUT", body: JSON.stringify({
+      serverDir: $("mServerDir").value, serverExe: $("mServerExe").value,
+      steamcmdExe: $("mSteamcmd").value, host: $("mHost").value, port: parseInt($("mPort").value, 10),
+      autoRestart: $("mAutoRestart").checked, autoRestartTime: $("mAutoRestartTime").value,
+      autoUpdate: $("mAutoUpdate").checked, autoUpdateWhenEmpty: $("mAutoUpdateEmpty").checked,
+    })});
+    toast("Manager settings saved (host/port need a manager restart)", "ok");
+    refreshStatus(); loadConfig();
+  } catch (e) { toast(e.message, "err"); }
+};
+
+// ---------- init
+(async function init() {
+  schema = await api("/api/schema");
+  buildSettingsUI();
+  await Promise.all([loadConfig(), loadManager()]);
+  refreshStatus();
+  setInterval(refreshStatus, 5000);
+  refreshPlayers();
+  setInterval(refreshPlayers, 10000);
+  autoCheckUpdate();
+  setInterval(autoCheckUpdate, 10 * 60 * 1000);
+  const s = await api("/api/status");
+  if (s.updating) { $("updatePanel").style.display = "block"; pollUpdate(); }
+})();
+window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+</script>
+</body>
+</html>
