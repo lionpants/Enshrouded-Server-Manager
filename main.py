@@ -690,6 +690,10 @@ def _load_playtime():
 
 playtime = _load_playtime()
 live_players = {"players": [], "error": None, "time": 0.0}
+# Last poll's [{"name", "duration"}] per connected session. Used to keep an
+# online player's displayed name stable across polls instead of re-deriving
+# it from the log roster every time — see resolve_session_names().
+_session_slots = []
 
 # Enshrouded leaves player names empty in A2S responses, so names come from the
 # server log. Patterns are configurable via "playerNamePatterns" in
@@ -705,6 +709,21 @@ LEAVE_PATTERNS_DEFAULT = [
 LOG_STATE_WORDS = {"Reserve", "WaitForJoin", "HostOnline", "Host_Online", "Lobby",
                    "LoadingWorld", "Playing", "Login", "Session"}
 HANDLE_RE = re.compile(r"^\d+(\(\d+\))?$")  # internal handles like 1(2), not real names
+SAVE_RE = re.compile(r"Sending Character Savegame '(?P<name>[^']+)'")
+LOG_TAIL_BOOTSTRAP = 2 * 1024 * 1024  # bound on the first read of a not-yet-tracked log file
+CONFIRM_GRACE = 12 * 60  # seconds a roster name may go unconfirmed before being pruned as a silent disconnect
+
+# Persistent, incremental view of "who's online" built from the log alone,
+# tracked since the server (or manager) started rather than re-derived from a
+# fixed tail window on every poll — see scan_log_names().
+_log_track = {
+    "path": None,       # Path of the log file currently being tailed
+    "pos": 0,           # bytes already consumed from that file
+    "buf": "",          # trailing partial line held over between reads
+    "roster": [],       # currently-online names, oldest join first
+    "confirmed": {},    # name -> time.time() of last supporting evidence (join line, save block, or live A2S match)
+    "saving": None,     # names collected inside an in-progress Start Saving .. Saved block
+}
 
 
 def is_real_name(name):
@@ -726,43 +745,67 @@ def latest_log_file():
     return logs[0] if logs else None
 
 
-def scan_log_names():
-    """Ordered list of player names from join lines in the current log (oldest first)."""
-    log = latest_log_file()
-    if not log:
-        return []
-    try:
-        with open(log, "rb") as f:
-            f.seek(0, 2)
-            f.seek(max(0, f.tell() - 2 * 1024 * 1024))
-            text = f.read().decode("utf-8", errors="replace")
-    except OSError:
-        return []
-    mcfg = load_manager_config()
+def reset_log_tracking():
+    """Drop all persistent log-roster state. Call when the server (re)starts —
+    a fresh instance means no one is connected yet, so old roster/confirmation
+    data shouldn't carry over."""
+    _log_track.update({"path": None, "pos": 0, "buf": "", "roster": [], "confirmed": {}, "saving": None})
+
+
+def note_departure(name):
+    """Immediately drop a name from the tracked roster — used when live A2S
+    session continuity proves a player disconnected even though no matching
+    leave line ever showed up in the log (crash, force-close, dropped
+    connection, etc.). See resolve_session_names()."""
+    if name in _log_track["roster"]:
+        _log_track["roster"].remove(name)
+    _log_track["confirmed"].pop(name, None)
+
+
+def touch_confirmed(name):
+    """Refresh a name's last-confirmed timestamp — called whenever live A2S
+    duration-continuity proves a session (and therefore its name) is still
+    connected, independent of anything the log says."""
+    if name in _log_track["confirmed"]:
+        _log_track["confirmed"][name] = time.time()
+
+
+def _consume_log_lines(lines, mcfg):
     join_pats = mcfg.get("playerNamePatterns") or NAME_PATTERNS_DEFAULT
     leave_pats = mcfg.get("playerLeavePatterns") or LEAVE_PATTERNS_DEFAULT
-    save_re = re.compile(r"Sending Character Savegame '(?P<name>[^']+)'")
-    roster = []  # currently-online names in join order (oldest first)
-    saving = None  # names collected inside a Start Saving .. Saved block
-    for line in text.splitlines():
+    roster = _log_track["roster"]
+    confirmed = _log_track["confirmed"]
+    now = time.time()
+    for line in lines:
         if "(up)!" in line or "(down)!" in line:
             continue  # session state-machine lines use quoted state names
         # the ~5-min autosave logs every connected player's name — use complete
         # save blocks as an authoritative roster baseline (survives log rotation
-        # and joins that scrolled out of the tail window)
+        # and joins that scrolled out of the tail window). A name absent from a
+        # given save block isn't dropped immediately — a player who just joined
+        # may not have loaded far enough to be captured by the very next save —
+        # it's only pruned once it's gone unconfirmed by *any* evidence (join
+        # line, save mention, or live A2S continuity) for a full grace period,
+        # which is how truly stale entries (disconnects the log never logged)
+        # eventually get cleaned up.
         if "[server] Start Saving" in line:
-            saving = []
+            _log_track["saving"] = []
             continue
-        if saving is not None:
-            m = save_re.search(line)
+        if _log_track["saving"] is not None:
+            m = SAVE_RE.search(line)
             if m:
                 name = m.group("name").strip()
                 if is_real_name(name):
-                    saving.append(name)
+                    _log_track["saving"].append(name)
                 continue
             if "[server] Saved" in line:
-                roster = [n for n in roster if n in saving] + [n for n in saving if n not in roster]
-                saving = None
+                saving = _log_track["saving"]
+                for n in saving:
+                    confirmed[n] = now
+                    if n not in roster:
+                        roster.append(n)
+                roster[:] = [n for n in roster if n in saving or now - confirmed.get(n, 0) < CONFIRM_GRACE]
+                _log_track["saving"] = None
                 continue
         matched = False
         for pat in join_pats:
@@ -776,6 +819,7 @@ def scan_log_names():
                     if name in roster:
                         roster.remove(name)
                     roster.append(name)
+                    confirmed[name] = now
                 matched = True
                 break
         if matched:
@@ -789,8 +833,58 @@ def scan_log_names():
                 name = m.group("name").strip()
                 if name in roster:
                     roster.remove(name)
+                confirmed.pop(name, None)
                 break
-    return roster
+
+
+def scan_log_names():
+    """Currently-online names in join order (oldest first).
+
+    Tracked incrementally since the server started (only newly-appended log
+    bytes are parsed each call) rather than re-derived from a fixed tail
+    window every poll, so a join or leave event can't be missed just because
+    it scrolled out of a bounded read. State resets on reset_log_tracking()
+    (server restart) and resyncs cleanly across log rotation/truncation.
+    """
+    log = latest_log_file()
+    if not log:
+        return list(_log_track["roster"])
+    try:
+        size = log.stat().st_size
+    except OSError:
+        return list(_log_track["roster"])
+
+    if _log_track["path"] != log or size < _log_track["pos"]:
+        # First time seeing this file, or it rotated/was truncated in place.
+        # Bound the catch-up read like the old tail-scan did (avoids a slow
+        # full-file read on a large pre-existing log); the known roster and
+        # confirmations are kept as-is since those players are presumably
+        # still connected.
+        _log_track["path"] = log
+        _log_track["pos"] = max(0, size - LOG_TAIL_BOOTSTRAP)
+        _log_track["buf"] = ""
+        _log_track["saving"] = None
+
+    try:
+        with open(log, "rb") as f:
+            f.seek(_log_track["pos"])
+            chunk = f.read()
+    except OSError:
+        return list(_log_track["roster"])
+
+    _log_track["pos"] += len(chunk)
+    text = _log_track["buf"] + chunk.decode("utf-8", errors="replace")
+    if text and not text.endswith("\n"):
+        split = text.rfind("\n")
+        _log_track["buf"] = text[split + 1:]
+        text = text[:split + 1] if split >= 0 else ""
+    else:
+        _log_track["buf"] = ""
+
+    if text:
+        _consume_log_lines(text.splitlines(), load_manager_config())
+
+    return list(_log_track["roster"])
 
 
 def merge_names(a2s_names, durations):
@@ -814,6 +908,56 @@ def merge_names(a2s_names, durations):
 
 def assign_names(durations):
     return merge_names([None] * len(durations), durations)
+
+
+def resolve_session_names(durations):
+    """Assign each currently-connected session a name, preferring continuity
+    with the previous poll over re-deriving from the log roster.
+
+    A2S never reports real player names for this game (always blank), so
+    identity has to be inferred from the log. Re-deriving it from scratch
+    every poll means a single missed disconnect log line — leaving a stale
+    name stuck in the roster — can hijack an unrelated, still-connected
+    player's displayed name. Instead, once a session is matched across polls
+    by its duration continuing to grow, its name is locked in for the rest
+    of that connection; only brand-new sessions get resolved against the log
+    roster.
+    """
+    global _session_slots
+    n = len(durations)
+    sticky = [None] * n
+    candidates = []
+    for i, d in enumerate(durations):
+        for j, slot in enumerate(_session_slots):
+            delta = d - slot["duration"]
+            if 0 <= delta <= POLL_INTERVAL * 4:
+                candidates.append((delta, i, j))
+    candidates.sort(key=lambda c: c[0])
+    used_i, used_j = set(), set()
+    for delta, i, j in candidates:
+        if i in used_i or j in used_j:
+            continue
+        sticky[i] = _session_slots[j]["name"]
+        used_i.add(i)
+        used_j.add(j)
+    # A previously-connected slot that no session matched this poll is proof
+    # — straight from the live A2S query — that its player disconnected, even
+    # if the log never logged a leave line (crash, force-close, dropped
+    # connection). Purge it from the log-tracked roster immediately instead of
+    # waiting out the confirmation grace period.
+    for j, slot in enumerate(_session_slots):
+        if j not in used_j:
+            note_departure(slot["name"])
+    # Sessions that did carry over are still connected as far as A2S is
+    # concerned, regardless of what the log has or hasn't said recently —
+    # refresh their confirmation so the grace-period pruning in
+    # scan_log_names() never mistakes an ongoing session for a stale one.
+    for name in sticky:
+        if name:
+            touch_confirmed(name)
+    final = merge_names(sticky, durations)
+    _session_slots = [{"name": final[i], "duration": durations[i]} for i in range(n)]
+    return final
 
 
 def _save_playtime():
@@ -877,6 +1021,7 @@ def record_history(count):
 
 
 def player_poll_loop():
+    global _session_slots
     while True:
         try:
             if not find_server_process():
@@ -885,13 +1030,15 @@ def player_poll_loop():
                         _commit_pending(name)
                     _save_playtime()
                 live_players.update({"players": [], "error": None, "time": time.time()})
+                _session_slots = []
+                reset_log_tracking()
                 time.sleep(POLL_INTERVAL)
                 continue
             try:
                 players = query_players()
                 now_iso = datetime.now().isoformat(timespec="seconds")
                 durations = [int(p.duration) for p in players]
-                names = merge_names([p.name for p in players], durations)
+                names = resolve_session_names(durations)
                 current = {}
                 for name, dur in zip(names, durations):
                     current[name] = max(current.get(name, 0), dur)

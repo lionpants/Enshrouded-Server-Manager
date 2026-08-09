@@ -331,7 +331,7 @@ button.btn { border: none; border-radius: 8px; padding: 10px 22px; font-size: 15
             <label class="switch"><input type="checkbox" id="mAutoRestart"><span>Enabled</span></label>
             <input type="time" id="mAutoRestartTime" style="width:auto">
           </div>
-          <div class="help">Restarts the server once a day at this time (server machine's local time, only if it's running) — also forces a full resource respawn. Players are disconnected without warning; pick a quiet hour.</div></div>
+          <div class="help">Restarts the server once a day at this time (server machine's local time, only if it's running). Players are disconnected without warning; pick a quiet hour.</div></div>
         <div class="field"><label>Auto-update</label>
           <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
             <label class="switch"><input type="checkbox" id="mAutoUpdate"><span>Enabled</span></label>
@@ -427,7 +427,7 @@ const fmtUptime = s => {
 
 $("btnStart").onclick = () => act("/api/server/start", "Server starting…");
 $("btnStop").onclick = () => { if (confirm("Stop the server? Players will be disconnected.")) act("/api/server/stop", "Server stopped"); };
-$("btnRestart").onclick = () => { if (confirm("Restart the server? Players will be disconnected. This also forces a full resource/terrain respawn outside Flame Altar zones.")) act("/api/server/restart", "Server restarting…"); };
+$("btnRestart").onclick = () => { if (confirm("Restart the server? Players will be disconnected.")) act("/api/server/restart", "Server restarting…"); };
 $("btnNight").onclick = async () => {
   const on = $("btnNight").textContent.includes("OFF");
   const msg = on
